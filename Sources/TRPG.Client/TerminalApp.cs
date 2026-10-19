@@ -23,7 +23,7 @@ public sealed class TerminalApp
         DrawScreen();
 
         // 클라이언트를 시작하면 지정된 서버에 자동 접속한다.
-        string host = Environment.GetEnvironmentVariable("TRPG_SERVER_HOST") ?? "127.0.0.1";
+        string host = Environment.GetEnvironmentVariable("TRPG_SERVER_HOST") ?? "168.107.37.255";
         string? portValue = Environment.GetEnvironmentVariable("TRPG_SERVER_PORT");
         int port = int.TryParse(portValue, out int configuredPort) == true ? configuredPort : 60000;
         _ = ConnectRequested?.Invoke(host, port);
