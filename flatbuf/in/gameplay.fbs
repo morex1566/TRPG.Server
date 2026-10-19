@@ -32,4 +32,5 @@ table ConnectRequest
 table ConnectResponse
 {
     guid:ulong;
+    ip:string;
 }

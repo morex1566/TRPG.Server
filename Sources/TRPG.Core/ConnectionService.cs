@@ -17,11 +17,13 @@ namespace TRPG.Core
             Console.WriteLine($"Received connect request: {context.Owner!.Guid}");
 
             ulong guid = context.Owner!.Guid;
+            string ip = context.Owner.RemoteIp;
 
             return PacketContext.Create(PayloadType.ConnectResponse,
             builder =>
             {
-                return ConnectResponse.CreateConnectResponse(builder, guid).Value;
+                var ipOffset = builder.CreateString(ip);
+                return ConnectResponse.CreateConnectResponse(builder, guid, ipOffset).Value;
             });
         }
     }

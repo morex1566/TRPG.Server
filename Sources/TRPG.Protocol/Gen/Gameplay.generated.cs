@@ -178,8 +178,17 @@ public struct ConnectRequest : IFlatbufferObject
   public void __init(int _i, ByteBuffer _bb) { __p = new Table(_i, _bb); }
   public ConnectRequest __assign(int _i, ByteBuffer _bb) { __init(_i, _bb); return this; }
 
+  public byte Reserved { get { int o = __p.__offset(4); return o != 0 ? __p.bb.Get(o + __p.bb_pos) : (byte)0; } }
 
-  public static void StartConnectRequest(FlatBufferBuilder builder) { builder.StartTable(0); }
+  public static Offset<TRPG.Protocol.ConnectRequest> CreateConnectRequest(FlatBufferBuilder builder,
+      byte reserved = 0) {
+    builder.StartTable(1);
+    ConnectRequest.AddReserved(builder, reserved);
+    return ConnectRequest.EndConnectRequest(builder);
+  }
+
+  public static void StartConnectRequest(FlatBufferBuilder builder) { builder.StartTable(1); }
+  public static void AddReserved(FlatBufferBuilder builder, byte reserved) { builder.AddByte(0, reserved, 0); }
   public static Offset<TRPG.Protocol.ConnectRequest> EndConnectRequest(FlatBufferBuilder builder) {
     int o = builder.EndTable();
     return new Offset<TRPG.Protocol.ConnectRequest>(o);
@@ -192,6 +201,7 @@ static public class ConnectRequestVerify
   static public bool Verify(Google.FlatBuffers.Verifier verifier, uint tablePos)
   {
     return verifier.VerifyTableStart(tablePos)
+      && verifier.VerifyField(tablePos, 4 /*Reserved*/, 1 /*byte*/, 1, false)
       && verifier.VerifyTableEnd(tablePos);
   }
 }
@@ -206,16 +216,26 @@ public struct ConnectResponse : IFlatbufferObject
   public ConnectResponse __assign(int _i, ByteBuffer _bb) { __init(_i, _bb); return this; }
 
   public ulong Guid { get { int o = __p.__offset(4); return o != 0 ? __p.bb.GetUlong(o + __p.bb_pos) : (ulong)0; } }
+  public string Ip { get { int o = __p.__offset(6); return o != 0 ? __p.__string(o + __p.bb_pos) : null; } }
+#if ENABLE_SPAN_T
+  public Span<byte> GetIpBytes() { return __p.__vector_as_span<byte>(6, 1); }
+#else
+  public ArraySegment<byte>? GetIpBytes() { return __p.__vector_as_arraysegment(6); }
+#endif
+  public byte[] GetIpArray() { return __p.__vector_as_array<byte>(6); }
 
   public static Offset<TRPG.Protocol.ConnectResponse> CreateConnectResponse(FlatBufferBuilder builder,
-      ulong guid = 0) {
-    builder.StartTable(1);
+      ulong guid = 0,
+      StringOffset ipOffset = default(StringOffset)) {
+    builder.StartTable(2);
     ConnectResponse.AddGuid(builder, guid);
+    ConnectResponse.AddIp(builder, ipOffset);
     return ConnectResponse.EndConnectResponse(builder);
   }
 
-  public static void StartConnectResponse(FlatBufferBuilder builder) { builder.StartTable(1); }
+  public static void StartConnectResponse(FlatBufferBuilder builder) { builder.StartTable(2); }
   public static void AddGuid(FlatBufferBuilder builder, ulong guid) { builder.AddUlong(0, guid, 0); }
+  public static void AddIp(FlatBufferBuilder builder, StringOffset ipOffset) { builder.AddOffset(1, ipOffset.Value, 0); }
   public static Offset<TRPG.Protocol.ConnectResponse> EndConnectResponse(FlatBufferBuilder builder) {
     int o = builder.EndTable();
     return new Offset<TRPG.Protocol.ConnectResponse>(o);
@@ -229,6 +249,7 @@ static public class ConnectResponseVerify
   {
     return verifier.VerifyTableStart(tablePos)
       && verifier.VerifyField(tablePos, 4 /*Guid*/, 8 /*ulong*/, 8, false)
+      && verifier.VerifyString(tablePos, 6 /*Ip*/, false)
       && verifier.VerifyTableEnd(tablePos);
   }
 }

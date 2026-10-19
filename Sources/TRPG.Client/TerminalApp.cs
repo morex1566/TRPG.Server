@@ -1,202 +1,213 @@
-using Terminal.Gui;
+using System.Text;
 
 namespace TRPG;
 
 public sealed class TerminalApp
 {
-    private TextField hostField = null!;
-
-    private TextField portField = null!;
-
-    private ComboBox commandCombo = null!;
-
-    private TextField messageField = null!;
-
-    private TextView logView = null!;
-
-    private Label statusLabel = null!;
-
-    private Label guidLabel = null!;
-
+    private const int MessageColumn = 27;
+    private readonly List<(string Sender, string Message, bool IsOwn)> messages = new();
+    private readonly StringBuilder input = new();
+    private string ownIp = "-";
+    private int screenWidth;
+    private int screenHeight;
+    private int scrollOffset;
 
     public event Func<string, int, Task>? ConnectRequested;
-
-    public event Action? DisconnectRequested;
-
     public event Action<string>? ChatRequested;
-
 
     public void Run(Func<bool> tick)
     {
-        Application.Init();
+        Console.OutputEncoding = Encoding.UTF8;
+        Console.InputEncoding = Encoding.UTF8;
+        Console.CursorVisible = true;
+        DrawScreen();
 
-        try
+        // 클라이언트를 시작하면 지정된 서버에 자동 접속한다.
+        string host = Environment.GetEnvironmentVariable("TRPG_SERVER_HOST") ?? "127.0.0.1";
+        string? portValue = Environment.GetEnvironmentVariable("TRPG_SERVER_PORT");
+        int port = int.TryParse(portValue, out int configuredPort) == true ? configuredPort : 60000;
+        _ = ConnectRequested?.Invoke(host, port);
+
+        while (tick() == true)
         {
-            var top = Application.Top;
-            var window = new Window("TRPG Client")
-            {
-                X = 0,
-                Y = 1,
-                Width = Dim.Fill(),
-                Height = Dim.Fill()
-            };
-
-            top.Add(window);
-
-            BuildLayout(window);
-            AppendLog("client ui ready.");
-
-            Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(50), _ => tick());
-            Application.Run();
-        }
-        finally
-        {
-            Application.Shutdown();
+            if (screenWidth != Console.WindowWidth || screenHeight != Console.WindowHeight) DrawScreen();
+            if (Console.KeyAvailable == true) HandleKey(Console.ReadKey(intercept: true));
+            else Thread.Sleep(20);
         }
     }
 
     public void ClearMessage()
     {
-        messageField.Text = "";
+        input.Clear();
+        DrawInput();
     }
 
     public void AppendLog(string message)
     {
-        logView.Text += $"{DateTime.Now:HH:mm:ss} {message}{Environment.NewLine}";
-        logView.SetNeedsDisplay();
+        System.Diagnostics.Debug.WriteLine(message);
     }
 
-    public void SetConnectionStatus(bool connected, ulong guid)
+    public void AppendChat(string sender, string message)
     {
-        statusLabel.Text = connected ? "Connected" : "Disconnected";
-        guidLabel.Text = connected && guid != 0 ? $"GUID: {guid}" : "GUID: -";
-        statusLabel.SetNeedsDisplay();
-        guidLabel.SetNeedsDisplay();
+        string safeSender = sender.Replace('\r', ' ').Replace('\n', ' ');
+        string safeMessage = message.Replace('\r', ' ').Replace('\n', ' ');
+        messages.Add((safeSender, safeMessage, safeSender.StartsWith("ㅇㅇ(", StringComparison.Ordinal)));
+        // 이전 채팅을 읽는 중이면 새 메시지가 와도 같은 위치를 유지한다.
+        if (scrollOffset > 0) scrollOffset++;
+        DrawMessages();
     }
 
-    private void BuildLayout(Window window)
+    public void AppendOwnChat(string message)
     {
-        var hostLabel = new Label("Host")
-        {
-            X = 1,
-            Y = 1,
-            Width = 6
-        };
-
-        hostField = new TextField("127.0.0.1")
-        {
-            X = Pos.Right(hostLabel) + 1,
-            Y = 1,
-            Width = 18
-        };
-
-        var portLabel = new Label("Port")
-        {
-            X = Pos.Right(hostField) + 2,
-            Y = 1,
-            Width = 6
-        };
-
-        portField = new TextField("60000")
-        {
-            X = Pos.Right(portLabel) + 1,
-            Y = 1,
-            Width = 8
-        };
-
-        commandCombo = new ComboBox()
-        {
-            X = 1,
-            Y = 3,
-            Width = 16,
-            Height = 4
-        };
-        commandCombo.SetSource(new[] { "connect", "disconnect", "chat" });
-        commandCombo.SelectedItem = 0;
-
-        messageField = new TextField("")
-        {
-            X = Pos.Right(commandCombo) + 1,
-            Y = 3,
-            Width = Dim.Fill(10)
-        };
-
-        var runButton = new Button("Run")
-        {
-            X = Pos.Right(messageField) + 1,
-            Y = 3
-        };
-        runButton.Clicked += async () => await ExecuteSelectedCommandAsync();
-
-        statusLabel = new Label("Disconnected")
-        {
-            X = 1,
-            Y = 5,
-            Width = 24
-        };
-
-        guidLabel = new Label("GUID: -")
-        {
-            X = Pos.Right(statusLabel) + 2,
-            Y = 5,
-            Width = 40
-        };
-
-        logView = new TextView()
-        {
-            X = 1,
-            Y = 7,
-            Width = Dim.Fill(1),
-            Height = Dim.Fill(1),
-            ReadOnly = true
-        };
-
-        window.Add(
-            hostLabel,
-            hostField,
-            portLabel,
-            portField,
-            commandCombo,
-            messageField,
-            runButton,
-            statusLabel,
-            guidLabel,
-            logView);
+        AppendChat($"ㅇㅇ({ownIp})", message);
     }
 
-    private async Task ExecuteSelectedCommandAsync()
+    public void SetOwnIp(string ip)
     {
-        string command = commandCombo.Text.ToString() ?? "";
+        ownIp = ip;
+    }
 
-        switch (command)
+    private void HandleKey(ConsoleKeyInfo key)
+    {
+        int pageSize = Math.Max(1, screenHeight - 3);
+        int maxOffset = Math.Max(0, messages.Count - pageSize);
+        if (key.Key == ConsoleKey.PageUp || key.Key == ConsoleKey.UpArrow || key.Key == ConsoleKey.Home)
         {
-            case "connect":
-                if (!int.TryParse(portField.Text.ToString(), out int port))
-                {
-                    AppendLog("invalid port.");
-                    break;
-                }
-
-                Func<string, int, Task>? connectRequested = ConnectRequested;
-                if (connectRequested is not null)
-                {
-                    await connectRequested(hostField.Text.ToString() ?? "", port);
-                }
-                break;
-
-            case "disconnect":
-                Action? disconnectRequested = DisconnectRequested;
-                disconnectRequested?.Invoke();
-                break;
-
-            case "chat":
-                Action<string>? chatRequested = ChatRequested;
-                chatRequested?.Invoke(messageField.Text.ToString() ?? "");
-                break;
-
-            default:
-                AppendLog($"unknown command: {command}");
-                break;
+            int amount = key.Key == ConsoleKey.UpArrow ? 1 : pageSize;
+            scrollOffset = key.Key == ConsoleKey.Home ? maxOffset : Math.Min(maxOffset, scrollOffset + amount);
+            DrawMessages();
+            return;
         }
+        if (key.Key == ConsoleKey.PageDown || key.Key == ConsoleKey.DownArrow || key.Key == ConsoleKey.End)
+        {
+            int amount = key.Key == ConsoleKey.DownArrow ? 1 : pageSize;
+            scrollOffset = key.Key == ConsoleKey.End ? 0 : Math.Max(0, scrollOffset - amount);
+            DrawMessages();
+            return;
+        }
+        if (key.Key == ConsoleKey.Enter)
+        {
+            ChatRequested?.Invoke(input.ToString());
+            return;
+        }
+        if (key.Key == ConsoleKey.Backspace)
+        {
+            if (input.Length > 0)
+            {
+                input.Remove(input.Length - 1, 1);
+                DrawInput();
+            }
+            return;
+        }
+        if (char.IsControl(key.KeyChar) == false)
+        {
+            input.Append(key.KeyChar);
+            DrawInput();
+        }
+    }
+
+    private void DrawScreen()
+    {
+        screenWidth = Console.WindowWidth;
+        screenHeight = Console.WindowHeight;
+        if (screenWidth < 4 || screenHeight < 4) return;
+
+        Console.BackgroundColor = ConsoleColor.Black;
+        Console.ForegroundColor = ConsoleColor.White;
+        Console.Clear();
+        Console.SetCursorPosition(0, 0);
+        Console.Write('┌' + new string('─', screenWidth - 2) + '┐');
+        for (int row = 1; row < screenHeight - 1; row++)
+        {
+            Console.SetCursorPosition(0, row);
+            Console.Write('│');
+            Console.SetCursorPosition(screenWidth - 1, row);
+            Console.Write('│');
+        }
+        Console.SetCursorPosition(0, screenHeight - 1);
+        Console.Write('└' + new string('─', screenWidth - 2) + '┘');
+        DrawMessages();
+    }
+
+    private void DrawMessages()
+    {
+        if (screenWidth < 4 || screenHeight < 4) return;
+        int rows = screenHeight - 3;
+        scrollOffset = Math.Min(scrollOffset, Math.Max(0, messages.Count - rows));
+        int first = Math.Max(0, messages.Count - rows - scrollOffset);
+        for (int row = 0; row < rows; row++)
+        {
+            Console.SetCursorPosition(1, row + 1);
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.Write(new string(' ', screenWidth - 2));
+            int index = first + row;
+            if (index >= messages.Count) continue;
+            Console.SetCursorPosition(1, row + 1);
+            Console.ForegroundColor = messages[index].IsOwn ? ConsoleColor.DarkYellow : ConsoleColor.White;
+            // 발신자 길이와 한글 폭에 관계없이 구분자를 같은 열에 표시한다.
+            int separatorColumn = Math.Min(MessageColumn, screenWidth - 3);
+            Console.Write(FitToWidth(messages[index].Sender, separatorColumn - 2));
+            Console.SetCursorPosition(separatorColumn, row + 1);
+            Console.Write(": ");
+            Console.Write(FitToWidth(messages[index].Message, screenWidth - separatorColumn - 3));
+        }
+        Console.ForegroundColor = ConsoleColor.White;
+        DrawInput();
+    }
+
+    private void DrawInput()
+    {
+        if (screenWidth < 4 || screenHeight < 4) return;
+        Console.SetCursorPosition(1, screenHeight - 2);
+        Console.ForegroundColor = ConsoleColor.White;
+        Console.Write(new string(' ', screenWidth - 2));
+        Console.SetCursorPosition(1, screenHeight - 2);
+        Console.Write("> ");
+        // 입력이 화면보다 길어지면 끝부분과 입력 커서를 유지한다.
+        Console.Write(FitFromEnd(input.ToString(), screenWidth - 4));
+        Console.CursorVisible = true;
+    }
+
+    private static string FitToWidth(string value, int availableWidth)
+    {
+        var result = new StringBuilder();
+        int width = 0;
+        foreach (char character in value)
+        {
+            int characterWidth = GetDisplayWidth(character);
+            if (width + characterWidth > availableWidth) break;
+            result.Append(character);
+            width += characterWidth;
+        }
+        return result.ToString();
+    }
+
+    private static string FitFromEnd(string value, int availableWidth)
+    {
+        int start = value.Length;
+        int width = 0;
+        while (start > 0)
+        {
+            int characterWidth = GetDisplayWidth(value[start - 1]);
+            if (width + characterWidth > availableWidth) break;
+            width += characterWidth;
+            start--;
+        }
+        return value[start..];
+    }
+
+    private static int GetDisplayWidth(string value)
+    {
+        int width = 0;
+        foreach (char character in value) width += GetDisplayWidth(character);
+        return width;
+    }
+
+    private static int GetDisplayWidth(char character)
+    {
+        // 한글 음절과 자모는 콘솔에서 두 칸을 차지한다.
+        return character is >= '\u1100' and <= '\u11FF'
+            or >= '\u3130' and <= '\u318F'
+            or >= '\uAC00' and <= '\uD7A3' ? 2 : 1;
     }
 }

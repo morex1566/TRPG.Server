@@ -65,6 +65,8 @@ public sealed class TcpClient
 
     public ulong Guid => connection?.Guid ?? 0;
 
+    public string LocalIp => connection?.LocalIp ?? "";
+
 
     /// <summary>
     /// tcp 클라이언트 인스턴스 생성

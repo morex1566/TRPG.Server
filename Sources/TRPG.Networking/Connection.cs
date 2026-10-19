@@ -98,6 +98,16 @@ public sealed class Connection
 
     public ulong Guid => connectionGuid;
 
+    /// <summary>
+    /// 서버가 관측한 접속자의 IP 주소
+    /// </summary>
+    public string RemoteIp => (socket.Client.RemoteEndPoint as System.Net.IPEndPoint)?.Address.ToString() ?? "";
+
+    /// <summary>
+    /// 클라이언트가 서버 접속에 사용한 로컬 IP 주소
+    /// </summary>
+    public string LocalIp => (socket.Client.LocalEndPoint as System.Net.IPEndPoint)?.Address.ToString() ?? "";
+
 
     /// <summary>
     /// connection GUID 갱신

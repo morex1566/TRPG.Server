@@ -14,9 +14,15 @@ static partial class Program
     public static void Main()
     {
         app.ConnectRequested += OnConnectAsync;
-        app.DisconnectRequested += OnDisconnect;
         app.ChatRequested += OnChat;
-        app.Run(Tick);
+        try
+        {
+            app.Run(Tick);
+        }
+        finally
+        {
+            tcpClient?.Close();
+        }
     }
 
     private static bool Tick()
@@ -60,7 +66,6 @@ static partial class Program
     private static void HandlePacket(ref PacketContext context)
     {
         var payloadType = context.GetPayloadType();
-        app.AppendLog($"recv: {payloadType}");
 
         switch (payloadType)
         {
@@ -70,6 +75,10 @@ static partial class Program
 
             case PayloadType.ChatMessageResponse:
                 ReceiveChatMessageResponse(ref context);
+                break;
+
+            case PayloadType.ChatMessageNotify:
+                ReceiveChatMessageNotify(ref context);
                 break;
 
             default:
@@ -83,15 +92,25 @@ static partial class Program
         ConnectResponse response = context.PayloadAs<ConnectResponse>()!.Value;
 
         tcpClient?.SetGuid(response.Guid);
-        app.SetConnectionStatus(true, response.Guid);
-        app.AppendLog($"server guid: {response.Guid}");
+        if (string.IsNullOrWhiteSpace(response.Ip) == false)
+        {
+            app.SetOwnIp(response.Ip);
+        }
     }
 
     private static void ReceiveChatMessageResponse(ref PacketContext context)
     {
         ChatMessageResponse response = context.PayloadAs<ChatMessageResponse>()!.Value;
 
-        app.AppendLog($"server: {response.Message}");
+        app.AppendChat("server", response.Message);
+    }
+
+    private static void ReceiveChatMessageNotify(ref PacketContext context)
+    {
+        ChatMessageNotify notification = context.PayloadAs<ChatMessageNotify>()!.Value;
+
+        // 현재 패킷에는 발신자 IP가 없어서 기존 발신자 GUID를 표시한다.
+        app.AppendChat(notification.From.ToString(), notification.Message);
     }
 }
 
@@ -122,6 +141,12 @@ static partial class Program
             return;
         }
 
+        // 서버의 접속 IP 응답을 받기 전에는 소켓의 로컬 IP를 표시한다.
+        if (string.IsNullOrWhiteSpace(client.LocalIp) == false)
+        {
+            app.SetOwnIp(client.LocalIp);
+        }
+
         NetResult startWriteResult = await client.StartWriteAsync();
         if (!ReferenceEquals(tcpClient, client))
         {
@@ -145,31 +170,24 @@ static partial class Program
 
         if (SendPacket(packet))
         {
-            app.SetConnectionStatus(true, client.Guid);
             app.AppendLog("connected.");
         }
     }
 
-    private static void OnDisconnect()
-    {
-        tcpClient?.Close();
-        tcpClient = null;
-
-        app.SetConnectionStatus(false, 0);
-        app.AppendLog("disconnected.");
-    }
-
     private static void OnChat(string message)
     {
-        if (tcpClient?.IsConnected != true)
+        if (string.IsNullOrWhiteSpace(message))
         {
-            app.AppendLog("not connected.");
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(message))
+        // 로컬 채팅은 서버 전송 성공 여부와 관계없이 즉시 표시한다.
+        app.AppendOwnChat(message);
+        app.ClearMessage();
+
+        if (tcpClient?.IsConnected != true)
         {
-            app.AppendLog("empty message.");
+            app.AppendChat("공지", "서버에 연결되어 있지 않습니다.");
             return;
         }
 
@@ -183,10 +201,9 @@ static partial class Program
                 messageOffset).Value;
         });
 
-        if (SendPacket(packet))
+        if (SendPacket(packet) == false)
         {
-            app.AppendLog($"me: {message}");
-            app.ClearMessage();
+            app.AppendChat("공지", "서버에 연결되어 있지 않습니다.");
         }
     }
 }
