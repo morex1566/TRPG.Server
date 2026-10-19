@@ -126,28 +126,38 @@ public struct ChatMessageNotify : IFlatbufferObject
 #endif
   public byte[] GetMessageArray() { return __p.__vector_as_array<byte>(10); }
   public long Timestamp { get { int o = __p.__offset(12); return o != 0 ? __p.bb.GetLong(o + __p.bb_pos) : (long)0; } }
+  public string FromIp { get { int o = __p.__offset(14); return o != 0 ? __p.__string(o + __p.bb_pos) : null; } }
+#if ENABLE_SPAN_T
+  public Span<byte> GetFromIpBytes() { return __p.__vector_as_span<byte>(14, 1); }
+#else
+  public ArraySegment<byte>? GetFromIpBytes() { return __p.__vector_as_arraysegment(14); }
+#endif
+  public byte[] GetFromIpArray() { return __p.__vector_as_array<byte>(14); }
 
   public static Offset<TRPG.Protocol.ChatMessageNotify> CreateChatMessageNotify(FlatBufferBuilder builder,
       TRPG.Protocol.ChatType type = TRPG.Protocol.ChatType.ToClient,
       ulong from = 0,
       ulong to = 0,
       StringOffset messageOffset = default(StringOffset),
-      long timestamp = 0) {
-    builder.StartTable(5);
+      long timestamp = 0,
+      StringOffset from_ipOffset = default(StringOffset)) {
+    builder.StartTable(6);
     ChatMessageNotify.AddTimestamp(builder, timestamp);
     ChatMessageNotify.AddTo(builder, to);
     ChatMessageNotify.AddFrom(builder, from);
+    ChatMessageNotify.AddFromIp(builder, from_ipOffset);
     ChatMessageNotify.AddMessage(builder, messageOffset);
     ChatMessageNotify.AddType(builder, type);
     return ChatMessageNotify.EndChatMessageNotify(builder);
   }
 
-  public static void StartChatMessageNotify(FlatBufferBuilder builder) { builder.StartTable(5); }
+  public static void StartChatMessageNotify(FlatBufferBuilder builder) { builder.StartTable(6); }
   public static void AddType(FlatBufferBuilder builder, TRPG.Protocol.ChatType type) { builder.AddSbyte(0, (sbyte)type, 0); }
   public static void AddFrom(FlatBufferBuilder builder, ulong from) { builder.AddUlong(1, from, 0); }
   public static void AddTo(FlatBufferBuilder builder, ulong to) { builder.AddUlong(2, to, 0); }
   public static void AddMessage(FlatBufferBuilder builder, StringOffset messageOffset) { builder.AddOffset(3, messageOffset.Value, 0); }
   public static void AddTimestamp(FlatBufferBuilder builder, long timestamp) { builder.AddLong(4, timestamp, 0); }
+  public static void AddFromIp(FlatBufferBuilder builder, StringOffset fromIpOffset) { builder.AddOffset(5, fromIpOffset.Value, 0); }
   public static Offset<TRPG.Protocol.ChatMessageNotify> EndChatMessageNotify(FlatBufferBuilder builder) {
     int o = builder.EndTable();
     return new Offset<TRPG.Protocol.ChatMessageNotify>(o);
@@ -165,6 +175,7 @@ static public class ChatMessageNotifyVerify
       && verifier.VerifyField(tablePos, 8 /*To*/, 8 /*ulong*/, 8, false)
       && verifier.VerifyString(tablePos, 10 /*Message*/, false)
       && verifier.VerifyField(tablePos, 12 /*Timestamp*/, 8 /*long*/, 8, false)
+      && verifier.VerifyString(tablePos, 14 /*FromIp*/, false)
       && verifier.VerifyTableEnd(tablePos);
   }
 }

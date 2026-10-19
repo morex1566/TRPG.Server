@@ -22,6 +22,7 @@ table ChatMessageNotify
     to:ulong;
     message:string;
     timestamp:long;
+    from_ip:string;
 }
 
 // 서버에 연결했을 때

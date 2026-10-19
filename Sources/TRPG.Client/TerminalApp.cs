@@ -49,9 +49,14 @@ public sealed class TerminalApp
 
     public void AppendChat(string sender, string message)
     {
+        AppendChat(sender, message, false);
+    }
+
+    private void AppendChat(string sender, string message, bool isOwn)
+    {
         string safeSender = sender.Replace('\r', ' ').Replace('\n', ' ');
         string safeMessage = message.Replace('\r', ' ').Replace('\n', ' ');
-        messages.Add((safeSender, safeMessage, safeSender.StartsWith("ㅇㅇ(", StringComparison.Ordinal)));
+        messages.Add((safeSender, safeMessage, isOwn));
         // 이전 채팅을 읽는 중이면 새 메시지가 와도 같은 위치를 유지한다.
         if (scrollOffset > 0) scrollOffset++;
         DrawMessages();
@@ -59,7 +64,7 @@ public sealed class TerminalApp
 
     public void AppendOwnChat(string message)
     {
-        AppendChat($"ㅇㅇ({ownIp})", message);
+        AppendChat($"ㅇㅇ({ownIp})", message, true);
     }
 
     public void SetOwnIp(string ip)

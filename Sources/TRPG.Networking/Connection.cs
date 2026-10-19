@@ -41,6 +41,10 @@ public sealed class Connection
     /// </summary>
     private readonly System.Net.Sockets.TcpClient socket;
 
+    private readonly string remoteIp;
+
+    private readonly string localIp;
+
     /// <summary>
     /// 네트워크 스트림
     /// </summary>
@@ -87,6 +91,9 @@ public sealed class Connection
     {
         strand = new Strand();
         socket = clientSocket;
+        // 종료 직후에도 수신 큐에 남은 패킷의 발신 주소를 안전하게 읽는다.
+        remoteIp = (clientSocket.Client.RemoteEndPoint as System.Net.IPEndPoint)?.Address.ToString() ?? "";
+        localIp = (clientSocket.Client.LocalEndPoint as System.Net.IPEndPoint)?.Address.ToString() ?? "";
         stream = clientSocket.GetStream();
         connectionGuid = connectionId;
         recvQueue = queue;
@@ -101,12 +108,12 @@ public sealed class Connection
     /// <summary>
     /// 서버가 관측한 접속자의 IP 주소
     /// </summary>
-    public string RemoteIp => (socket.Client.RemoteEndPoint as System.Net.IPEndPoint)?.Address.ToString() ?? "";
+    public string RemoteIp => remoteIp;
 
     /// <summary>
     /// 클라이언트가 서버 접속에 사용한 로컬 IP 주소
     /// </summary>
-    public string LocalIp => (socket.Client.LocalEndPoint as System.Net.IPEndPoint)?.Address.ToString() ?? "";
+    public string LocalIp => localIp;
 
 
     /// <summary>

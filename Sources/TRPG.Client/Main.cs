@@ -109,8 +109,11 @@ static partial class Program
     {
         ChatMessageNotify notification = context.PayloadAs<ChatMessageNotify>()!.Value;
 
-        // 현재 패킷에는 발신자 IP가 없어서 기존 발신자 GUID를 표시한다.
-        app.AppendChat(notification.From.ToString(), notification.Message);
+        // 서버가 확인한 발신자 IP를 채팅 표시명으로 사용한다.
+        string sender = string.IsNullOrWhiteSpace(notification.FromIp) == true
+            ? notification.From.ToString()
+            : $"ㅇㅇ({notification.FromIp})";
+        app.AppendChat(sender, notification.Message);
     }
 }
 

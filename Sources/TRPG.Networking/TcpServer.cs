@@ -10,6 +10,7 @@ namespace TRPG.Networking;
 /// </summary>
 public sealed class TcpServer
 {
+    private const int MaxConnections = 10;
     /// <summary>
     /// tcp 서버 실행 상태
     /// </summary>
@@ -152,6 +153,13 @@ public sealed class TcpServer
                 continue;
             }
 
+            // 한 채팅방에 최대 10명만 입장시킨다.
+            if (connections.Count >= MaxConnections)
+            {
+                acceptResult.Value.Close();
+                continue;
+            }
+
             // 커넥션 등록
             ulong newConnectionId = ConnectionIdGenerator.Generate();
             ulong newConnectionGuid = GuidGenerator.Generate();
@@ -163,6 +171,23 @@ public sealed class TcpServer
             });
             connections[newConnectionId] = newConnection;
             connections[newConnectionId].StartReadAsync();
+        }
+    }
+
+    /// <summary>
+    /// 접속 중인 발신자의 패킷을 채팅방의 다른 접속자에게 전달한다.
+    /// </summary>
+    public void BroadcastExcept(Connection sender, byte[] buffer)
+    {
+        // 연결 종료 후 큐에 남은 패킷은 중계하지 않는다.
+        if (connections.Values.Any(connection => ReferenceEquals(connection, sender)) == false) return;
+
+        foreach (Connection connection in connections.Values)
+        {
+            if (ReferenceEquals(connection, sender) == false)
+            {
+                connection.Send(buffer);
+            }
         }
     }
 
