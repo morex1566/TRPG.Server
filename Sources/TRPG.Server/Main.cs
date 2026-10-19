@@ -13,7 +13,7 @@ static class Program
             shutdownCancellation.Cancel();
         };
 
-        // 개발 서버도 운영 서버와 같은 채팅방 로직을 실행한다.
+        // 채팅방 서버를 실행하고 Ctrl+C를 누르면 종료한다.
         await ChatServer.RunAsync(shutdownCancellation.Token);
     }
 }

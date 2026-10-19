@@ -3,16 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.37111.16
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TRPG.Server.Runtime", "Sources\TRPG.Server.Runtime\TRPG.Server.Runtime.csproj", "{19FE788E-C113-4D52-B6E6-CAA222028D9D}"
-	ProjectSection(ProjectDependencies) = postProject
-		{1C817B9C-8C06-4D3F-B136-C0ABE3ACC4C2} = {1C817B9C-8C06-4D3F-B136-C0ABE3ACC4C2}
-		{3CFF2DFE-7F1A-45F6-A1F1-A66175908B2F} = {3CFF2DFE-7F1A-45F6-A1F1-A66175908B2F}
-		{44E69589-FDEB-48A8-9BA2-B8AA8ABA4F91} = {44E69589-FDEB-48A8-9BA2-B8AA8ABA4F91}
-		{6E3128AE-FAA0-44C0-B772-EBA9FFE1D6BD} = {6E3128AE-FAA0-44C0-B772-EBA9FFE1D6BD}
-		{A1C824E6-EC36-4B9E-A5DF-2045BBA49EAC} = {A1C824E6-EC36-4B9E-A5DF-2045BBA49EAC}
-	EndProjectSection
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TRPG.Server.Development", "Sources\TRPG.Server.Development\TRPG.Server.Development.csproj", "{1D1218D3-D781-4DE7-8C5D-A6C81B5CB357}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TRPG.Server", "Sources\TRPG.Server\TRPG.Server.csproj", "{19FE788E-C113-4D52-B6E6-CAA222028D9D}"
 	ProjectSection(ProjectDependencies) = postProject
 		{1C817B9C-8C06-4D3F-B136-C0ABE3ACC4C2} = {1C817B9C-8C06-4D3F-B136-C0ABE3ACC4C2}
 		{3CFF2DFE-7F1A-45F6-A1F1-A66175908B2F} = {3CFF2DFE-7F1A-45F6-A1F1-A66175908B2F}
@@ -56,33 +47,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TRPG.Client", "Sources\TRPG
 		{A1C824E6-EC36-4B9E-A5DF-2045BBA49EAC} = {A1C824E6-EC36-4B9E-A5DF-2045BBA49EAC}
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TRPG.Server.Dashboard.Backend", "Sources\TRPG.Server.Dashboard.Backend\TRPG.Server.Dashboard.Backend.csproj", "{2133D61B-ABD3-4517-9097-FB36A73C9522}"
-EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "TRPG.Server.Dashboard.Frontend", "TRPG.Server.Dashboard.Frontend", "{B1E9AC68-4D2A-4E0E-9C50-D363A30F18B5}"
-	ProjectSection(SolutionItems) = preProject
-		Sources\TRPG.Server.Dashboard.Frontend\.gitignore = Sources\TRPG.Server.Dashboard.Frontend\.gitignore
-		Sources\TRPG.Server.Dashboard.Frontend\eslint.config.js = Sources\TRPG.Server.Dashboard.Frontend\eslint.config.js
-		Sources\TRPG.Server.Dashboard.Frontend\index.html = Sources\TRPG.Server.Dashboard.Frontend\index.html
-		Sources\TRPG.Server.Dashboard.Frontend\package-lock.json = Sources\TRPG.Server.Dashboard.Frontend\package-lock.json
-		Sources\TRPG.Server.Dashboard.Frontend\package.json = Sources\TRPG.Server.Dashboard.Frontend\package.json
-		Sources\TRPG.Server.Dashboard.Frontend\README.md = Sources\TRPG.Server.Dashboard.Frontend\README.md
-		Sources\TRPG.Server.Dashboard.Frontend\tsconfig.app.json = Sources\TRPG.Server.Dashboard.Frontend\tsconfig.app.json
-		Sources\TRPG.Server.Dashboard.Frontend\tsconfig.json = Sources\TRPG.Server.Dashboard.Frontend\tsconfig.json
-		Sources\TRPG.Server.Dashboard.Frontend\tsconfig.node.json = Sources\TRPG.Server.Dashboard.Frontend\tsconfig.node.json
-		Sources\TRPG.Server.Dashboard.Frontend\vite.config.ts = Sources\TRPG.Server.Dashboard.Frontend\vite.config.ts
-		Sources\TRPG.Server.Dashboard.Frontend\src\api\serverStatus.ts = Sources\TRPG.Server.Dashboard.Frontend\src\api\serverStatus.ts
-		Sources\TRPG.Server.Dashboard.Frontend\src\App.css = Sources\TRPG.Server.Dashboard.Frontend\src\App.css
-		Sources\TRPG.Server.Dashboard.Frontend\src\App.tsx = Sources\TRPG.Server.Dashboard.Frontend\src\App.tsx
-		Sources\TRPG.Server.Dashboard.Frontend\src\components\ConnectionSettings.tsx = Sources\TRPG.Server.Dashboard.Frontend\src\components\ConnectionSettings.tsx
-		Sources\TRPG.Server.Dashboard.Frontend\src\components\Dashboard.tsx = Sources\TRPG.Server.Dashboard.Frontend\src\components\Dashboard.tsx
-		Sources\TRPG.Server.Dashboard.Frontend\src\components\LogViewer.tsx = Sources\TRPG.Server.Dashboard.Frontend\src\components\LogViewer.tsx
-		Sources\TRPG.Server.Dashboard.Frontend\src\components\MetricsPanel.tsx = Sources\TRPG.Server.Dashboard.Frontend\src\components\MetricsPanel.tsx
-		Sources\TRPG.Server.Dashboard.Frontend\src\components\ServerStatus.tsx = Sources\TRPG.Server.Dashboard.Frontend\src\components\ServerStatus.tsx
-		Sources\TRPG.Server.Dashboard.Frontend\src\components\StatusBadge.tsx = Sources\TRPG.Server.Dashboard.Frontend\src\components\StatusBadge.tsx
-		Sources\TRPG.Server.Dashboard.Frontend\src\index.css = Sources\TRPG.Server.Dashboard.Frontend\src\index.css
-		Sources\TRPG.Server.Dashboard.Frontend\src\main.tsx = Sources\TRPG.Server.Dashboard.Frontend\src\main.tsx
-	EndProjectSection
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -93,10 +57,6 @@ Global
 		{19FE788E-C113-4D52-B6E6-CAA222028D9D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{19FE788E-C113-4D52-B6E6-CAA222028D9D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{19FE788E-C113-4D52-B6E6-CAA222028D9D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1D1218D3-D781-4DE7-8C5D-A6C81B5CB357}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1D1218D3-D781-4DE7-8C5D-A6C81B5CB357}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1D1218D3-D781-4DE7-8C5D-A6C81B5CB357}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1D1218D3-D781-4DE7-8C5D-A6C81B5CB357}.Release|Any CPU.Build.0 = Release|Any CPU
 		{44E69589-FDEB-48A8-9BA2-B8AA8ABA4F91}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{44E69589-FDEB-48A8-9BA2-B8AA8ABA4F91}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{44E69589-FDEB-48A8-9BA2-B8AA8ABA4F91}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -121,10 +81,6 @@ Global
 		{4F5CA15A-3221-4BC6-B784-43E3319DB476}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4F5CA15A-3221-4BC6-B784-43E3319DB476}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4F5CA15A-3221-4BC6-B784-43E3319DB476}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2133D61B-ABD3-4517-9097-FB36A73C9522}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2133D61B-ABD3-4517-9097-FB36A73C9522}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2133D61B-ABD3-4517-9097-FB36A73C9522}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2133D61B-ABD3-4517-9097-FB36A73C9522}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
