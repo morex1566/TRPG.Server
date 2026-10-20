@@ -13,7 +13,10 @@ public static class ChatServer
 
     public static async Task RunAsync(CancellationToken cancellation)
     {
+        // 이번 서버 실행에서 발생한 채팅을 같은 세션으로 구분한다.
+        string sessionId = Guid.NewGuid().ToString("N");
         TcpServer tcpServer = new TcpServer(Port);
+        await using var performance = new ServerPerformance(tcpServer, sessionId);
         try
         {
             NetResult startAcceptResult = await tcpServer.StartAcceptAsync();
@@ -31,6 +34,8 @@ public static class ChatServer
             }
 
             Console.WriteLine($"server listening. port={Port}");
+
+            long nextIdleCheck = Environment.TickCount64;
 
             while (cancellation.IsCancellationRequested == false)
             {
@@ -55,7 +60,15 @@ public static class ChatServer
                     }
                     if (payloadType == PayloadType.ChatMessageRequest)
                     {
-                        ChatService.Broadcast(ref context, tcpServer);
+                        try
+                        {
+                            await ChatService.BroadcastAsync(context, tcpServer, sessionId, cancellation);
+                        }
+                        catch (Oracle.ManagedDataAccess.Client.OracleException error)
+                        {
+                            // 접속 정보와 채팅 내용 없이 오류 번호만 기록한다.
+                            Console.WriteLine($"채팅 DB 저장 실패: ORA-{error.Number:D5}. 해당 메시지는 중계하지 않았습니다.");
+                        }
                         continue;
                     }
 
@@ -69,6 +82,13 @@ public static class ChatServer
                     handle.Invoke(ref context);
                 }
 
+                // 대기 중인 채팅을 반영한 뒤 1초마다 비활성 사용자를 정리한다.
+                if (Environment.TickCount64 >= nextIdleCheck)
+                {
+                    tcpServer.CloseInactiveConnections();
+                    nextIdleCheck = Environment.TickCount64 + 1000;
+                }
+
                 // 입장 패킷 처리 뒤에 퇴장을 처리해 입장/퇴장 공지 순서를 유지한다.
                 while (tcpServer.ClosedQueue.TryDequeue(out Connection? leaving) == true)
                 {
@@ -80,6 +100,10 @@ public static class ChatServer
 
                 await Task.Delay(10);
             }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested == true)
+        {
+            // DB 저장을 기다리는 중에도 정상 종료 요청을 처리한다.
         }
         finally
         {

@@ -7,6 +7,12 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Release는 현재 VM의 Ubuntu ARM64용 실행 환경을 포함한다. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">linux-arm64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\TRPG.Core\TRPG.Core.csproj" />
   </ItemGroup>

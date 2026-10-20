@@ -10,7 +10,7 @@ namespace TRPG.Networking;
 /// </summary>
 public sealed class TcpServer
 {
-    private const int MaxConnections = 10;
+    private const int MaxConnections = 1001;
     /// <summary>
     /// tcp 서버 실행 상태
     /// </summary>
@@ -68,6 +68,9 @@ public sealed class TcpServer
     public ConcurrentQueue<PacketContext> RecvQueue => recvQueue;
 
     public ConcurrentQueue<Connection> ClosedQueue => closedQueue;
+
+    // 샘플러는 접속 목록 자체를 노출하지 않고 개수만 읽는다.
+    public int ConnectionCount => connections.Count;
 
 
     /// <summary>
@@ -157,7 +160,7 @@ public sealed class TcpServer
                 continue;
             }
 
-            // 한 채팅방에 최대 10명만 입장시킨다.
+            // 한 채팅방에 최대 1,000명만 입장시킨다.
             if (connections.Count >= MaxConnections)
             {
                 acceptResult.Value.Close();
@@ -207,6 +210,18 @@ public sealed class TcpServer
         foreach (Connection connection in connections.Values)
         {
             connection.Send(buffer);
+        }
+    }
+
+    public void CloseInactiveConnections()
+    {
+        long now = Environment.TickCount64;
+        foreach (Connection connection in connections.Values)
+        {
+            if (connection.CloseIfChatIdle(now) == true)
+            {
+                Console.WriteLine($"chat idle timeout: guid={connection.Guid}");
+            }
         }
     }
 

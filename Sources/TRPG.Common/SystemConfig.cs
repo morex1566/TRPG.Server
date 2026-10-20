@@ -48,6 +48,11 @@ public static class SystemConfig
         /// read 타임아웃(ms). half-open 연결 방어용
         /// </summary>
         public const int ReadTimeoutMs = 30_000;
+
+        /// <summary>
+        /// 채팅을 보내지 않은 사용자의 자동 퇴장 시간(ms).
+        /// </summary>
+        public const int ChatIdleTimeoutMs = 30 * 60 * 1000;
     }
 
     /// <summary>

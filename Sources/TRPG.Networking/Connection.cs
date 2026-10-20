@@ -67,6 +67,10 @@ public sealed class Connection
 
     private int joined;
 
+    private long lastChatAt = Environment.TickCount64;
+
+    private int chatIdleTimedOut;
+
     /// <summary>
     /// StartWriteAsync() 중도 취소용
     /// </summary>
@@ -109,12 +113,33 @@ public sealed class Connection
 
     public bool HasJoined => Volatile.Read(ref joined) != 0;
 
+    public bool ChatIdleTimedOut => Volatile.Read(ref chatIdleTimedOut) != 0;
+
+    /// <summary>
+    /// 생존 확인이나 기록 조회는 채팅 활동 시간에 포함하지 않는다.
+    /// </summary>
+    public void MarkChatActivity()
+    {
+        Interlocked.Exchange(ref lastChatAt, Environment.TickCount64);
+    }
+
+    public bool CloseIfChatIdle(long now)
+    {
+        if (HasJoined == false || now - Interlocked.Read(ref lastChatAt) < SystemConfig.Connection.ChatIdleTimeoutMs) return false;
+        if (Interlocked.CompareExchange(ref chatIdleTimedOut, 1, 0) != 0) return false;
+
+        Close();
+        return true;
+    }
+
     /// <summary>
     /// 같은 연결에서 입장 공지가 중복 발생하지 않도록 표시한다.
     /// </summary>
     public bool TryMarkJoined()
     {
-        return Interlocked.CompareExchange(ref joined, 1, 0) == 0;
+        if (Interlocked.CompareExchange(ref joined, 1, 0) != 0) return false;
+        MarkChatActivity();
+        return true;
     }
 
     /// <summary>
@@ -242,6 +267,10 @@ public sealed class Connection
         catch (IOException ex)
         {
             return NetResult.Fail(new NetError(NetErrorType.Socket, ex.Message));
+        }
+        catch (OperationCanceledException)
+        {
+            return NetResult.Fail(new NetError(NetErrorType.Canceled));
         }
         catch (ObjectDisposedException ex)
         {

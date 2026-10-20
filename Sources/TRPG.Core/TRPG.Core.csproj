@@ -15,4 +15,8 @@
     <ProjectReference Include="..\TRPG.Core.Generators\TRPG.Core.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="23.26.301" />
+  </ItemGroup>
+
 </Project>

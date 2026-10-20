@@ -27,7 +27,13 @@ public sealed class TerminalApp
         DrawScreen();
 
         // 클라이언트를 시작하면 지정된 서버에 자동 접속한다.
-        string host = Environment.GetEnvironmentVariable("TRPG_SERVER_HOST") ?? "168.107.37.255";
+        // 빌드 구성으로 기본 접속 대상을 선택하고 명시적인 환경 변수는 우선한다.
+#if DEBUG
+        const string defaultHost = "127.0.0.1";
+#else
+        const string defaultHost = "168.107.37.255";
+#endif
+        string host = Environment.GetEnvironmentVariable("TRPG_SERVER_HOST") ?? defaultHost;
         string? portValue = Environment.GetEnvironmentVariable("TRPG_SERVER_PORT");
         int port = int.TryParse(portValue, out int configuredPort) == true ? configuredPort : 60000;
         _ = ConnectRequested?.Invoke(host, port);

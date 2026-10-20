@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.37111.16
@@ -47,6 +47,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TRPG.Client", "Sources\TRPG
 		{A1C824E6-EC36-4B9E-A5DF-2045BBA49EAC} = {A1C824E6-EC36-4B9E-A5DF-2045BBA49EAC}
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TRPG.Test", "Sources\TRPG.Test\TRPG.Test.csproj", "{B1D6D56A-0159-45AD-98CB-0781BCA6F8D6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -81,6 +83,10 @@ Global
 		{4F5CA15A-3221-4BC6-B784-43E3319DB476}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4F5CA15A-3221-4BC6-B784-43E3319DB476}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4F5CA15A-3221-4BC6-B784-43E3319DB476}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B1D6D56A-0159-45AD-98CB-0781BCA6F8D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B1D6D56A-0159-45AD-98CB-0781BCA6F8D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B1D6D56A-0159-45AD-98CB-0781BCA6F8D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B1D6D56A-0159-45AD-98CB-0781BCA6F8D6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

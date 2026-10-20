@@ -13,7 +13,10 @@ static class Program
             shutdownCancellation.Cancel();
         };
 
-        // 채팅방 서버를 실행하고 Ctrl+C를 누르면 종료한다.
+        // 서버 실행 전에 DB 연결 확인
+        await ChatDatabase.CheckConnectionAsync(shutdownCancellation.Token);
+
+        // 채팅방 서버를 실행
         await ChatServer.RunAsync(shutdownCancellation.Token);
     }
 }
