@@ -65,6 +65,8 @@ public sealed class Connection
     /// </summary>
     private ulong connectionGuid;
 
+    private int joined;
+
     /// <summary>
     /// StartWriteAsync() 중도 취소용
     /// </summary>
@@ -104,6 +106,16 @@ public sealed class Connection
 
 
     public ulong Guid => connectionGuid;
+
+    public bool HasJoined => Volatile.Read(ref joined) != 0;
+
+    /// <summary>
+    /// 같은 연결에서 입장 공지가 중복 발생하지 않도록 표시한다.
+    /// </summary>
+    public bool TryMarkJoined()
+    {
+        return Interlocked.CompareExchange(ref joined, 1, 0) == 0;
+    }
 
     /// <summary>
     /// 서버가 관측한 접속자의 IP 주소
@@ -406,6 +418,9 @@ public sealed class Connection
     {
         strand.Post(() =>
         {
+            // 수신과 송신 양쪽에서 종료를 요청해도 콜백은 한 번만 실행한다.
+            if (currentState.TryUnset(State.Connected) == false) return Task.CompletedTask;
+
             // Write() 종료
             currentState.TryUnset(State.Writing);
             writeCancellation?.Cancel();

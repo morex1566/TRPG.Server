@@ -6,6 +6,31 @@ namespace TRPG.Core
 {
     public static class ChatService
     {
+        public static void NotifyLeft(Connection sender, TcpServer server)
+        {
+            PacketContext notice = PacketContext.Create(PayloadType.ChatMessageNotify, builder =>
+            {
+                var text = builder.CreateString($"ㅇㅇ({sender.RemoteIp})님이 퇴장했습니다.");
+                // 입장 공지와 같은 서버 공지 형식이므로 이탤릭체와 시간이 적용된다.
+                return ChatMessageNotify.CreateChatMessageNotify(builder, ChatType.ToClient, 0, 0,
+                    text, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()).Value;
+            });
+            server.Broadcast(notice.Buffer);
+        }
+
+        public static void NotifyJoined(Connection sender, TcpServer server)
+        {
+            PacketContext notice = PacketContext.Create(PayloadType.ChatMessageNotify, builder =>
+            {
+                var text = builder.CreateString($"ㅇㅇ({sender.RemoteIp})님이 입장했습니다.");
+                // 발신자 0은 클라이언트가 아닌 서버 공지를 나타낸다.
+                return ChatMessageNotify.CreateChatMessageNotify(builder, ChatType.ToClient, 0, 0,
+                    text, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()).Value;
+            });
+            sender.Send(notice.Buffer);
+            server.BroadcastExcept(sender, notice.Buffer);
+        }
+
         public static void Broadcast(ref PacketContext context, TcpServer server)
         {
             Connection? sender = context.Owner;

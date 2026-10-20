@@ -109,11 +109,20 @@ static partial class Program
     {
         ChatMessageNotify notification = context.PayloadAs<ChatMessageNotify>()!.Value;
 
+        DateTimeOffset time = notification.Timestamp > 0
+            ? DateTimeOffset.FromUnixTimeMilliseconds(notification.Timestamp)
+            : DateTimeOffset.Now;
+        if (notification.From == 0)
+        {
+            app.AppendChat("공지", notification.Message, time);
+            return;
+        }
+
         // 서버가 확인한 발신자 IP를 채팅 표시명으로 사용한다.
         string sender = string.IsNullOrWhiteSpace(notification.FromIp) == true
             ? notification.From.ToString()
             : $"ㅇㅇ({notification.FromIp})";
-        app.AppendChat(sender, notification.Message);
+        app.AppendChat(sender, notification.Message, time);
     }
 }
 

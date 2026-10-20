@@ -52,6 +52,8 @@ public sealed class TcpServer
     /// </summary>
     private readonly ConcurrentQueue<PacketContext> recvQueue = new();
 
+    private readonly ConcurrentQueue<Connection> closedQueue = new();
+
     /// <summary>
     /// write tick-rate용 타이머 취소
     /// </summary>
@@ -64,6 +66,8 @@ public sealed class TcpServer
 
 
     public ConcurrentQueue<PacketContext> RecvQueue => recvQueue;
+
+    public ConcurrentQueue<Connection> ClosedQueue => closedQueue;
 
 
     /// <summary>
@@ -166,8 +170,12 @@ public sealed class TcpServer
             Console.WriteLine($"accept: connectionId={newConnectionId}, guid={newConnectionGuid}");
             var newConnection = new Connection(acceptResult.Value, newConnectionGuid, recvQueue, () =>
             {
-                connections.TryRemove(newConnectionId, out _);
-                Console.WriteLine($"close: connectionId={newConnectionId}");
+                // 종료 콜백이 반복되어도 퇴장 처리는 한 번만 큐에 넣는다.
+                if (connections.TryRemove(newConnectionId, out Connection? closed) == true)
+                {
+                    closedQueue.Enqueue(closed);
+                    Console.WriteLine($"close: connectionId={newConnectionId}");
+                }
             });
             connections[newConnectionId] = newConnection;
             connections[newConnectionId].StartReadAsync();
@@ -188,6 +196,17 @@ public sealed class TcpServer
             {
                 connection.Send(buffer);
             }
+        }
+    }
+
+    /// <summary>
+    /// 퇴장한 연결을 제외하고 현재 남아 있는 접속자에게 공지를 전달한다.
+    /// </summary>
+    public void Broadcast(byte[] buffer)
+    {
+        foreach (Connection connection in connections.Values)
+        {
+            connection.Send(buffer);
         }
     }
 

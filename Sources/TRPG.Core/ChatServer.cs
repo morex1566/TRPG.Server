@@ -43,6 +43,16 @@ public static class ChatServer
                     if (tcpServer.RecvQueue.TryDequeue(out PacketContext context) == false) break;
 
                     PayloadType payloadType = context.GetPayloadType();
+                    if (payloadType == PayloadType.ConnectRequest && context.Owner is Connection joining)
+                    {
+                        // 최초 접속 요청만 입장 공지로 전달한다.
+                        if (joining.TryMarkJoined() == true)
+                        {
+                            ConnectionService.RequestConnect(ref context);
+                            ChatService.NotifyJoined(joining, tcpServer);
+                        }
+                        continue;
+                    }
                     if (payloadType == PayloadType.ChatMessageRequest)
                     {
                         ChatService.Broadcast(ref context, tcpServer);
@@ -57,6 +67,15 @@ public static class ChatServer
                     }
 
                     handle.Invoke(ref context);
+                }
+
+                // 입장 패킷 처리 뒤에 퇴장을 처리해 입장/퇴장 공지 순서를 유지한다.
+                while (tcpServer.ClosedQueue.TryDequeue(out Connection? leaving) == true)
+                {
+                    if (leaving.HasJoined == true)
+                    {
+                        ChatService.NotifyLeft(leaving, tcpServer);
+                    }
                 }
 
                 await Task.Delay(10);

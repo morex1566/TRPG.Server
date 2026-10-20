@@ -5,12 +5,15 @@ namespace TRPG;
 public sealed class TerminalApp
 {
     private const int MessageColumn = 27;
-    private readonly List<(string Sender, string Message, bool IsOwn)> messages = new();
+    private readonly List<(string Sender, string Message, bool IsOwn, bool IsNotice, DateTimeOffset Time)> messages = new();
+    private readonly List<(string Sender, string Text, bool IsOwn, bool IsNotice)> displayRows = new();
     private readonly StringBuilder input = new();
     private string ownIp = "-";
     private int screenWidth;
     private int screenHeight;
     private int scrollOffset;
+    private bool draggingScroll;
+    private int dragOffset;
 
     public event Func<string, int, Task>? ConnectRequested;
     public event Action<string>? ChatRequested;
@@ -19,6 +22,7 @@ public sealed class TerminalApp
     {
         Console.OutputEncoding = Encoding.UTF8;
         Console.InputEncoding = Encoding.UTF8;
+        using var consoleInput = new WindowsConsoleInput();
         Console.CursorVisible = true;
         DrawScreen();
 
@@ -31,7 +35,7 @@ public sealed class TerminalApp
         while (tick() == true)
         {
             if (screenWidth != Console.WindowWidth || screenHeight != Console.WindowHeight) DrawScreen();
-            if (Console.KeyAvailable == true) HandleKey(Console.ReadKey(intercept: true));
+            if (consoleInput.Poll(HandleKey, HandleMouse) == true) continue;
             else Thread.Sleep(20);
         }
     }
@@ -47,24 +51,27 @@ public sealed class TerminalApp
         System.Diagnostics.Debug.WriteLine(message);
     }
 
-    public void AppendChat(string sender, string message)
+    public void AppendChat(string sender, string message, DateTimeOffset? time = null)
     {
-        AppendChat(sender, message, false);
+        AppendChat(sender, message, false, sender == "공지", time ?? DateTimeOffset.Now);
     }
 
-    private void AppendChat(string sender, string message, bool isOwn)
+    private void AppendChat(string sender, string message, bool isOwn, bool isNotice, DateTimeOffset time)
     {
-        string safeSender = sender.Replace('\r', ' ').Replace('\n', ' ');
-        string safeMessage = message.Replace('\r', ' ').Replace('\n', ' ');
-        messages.Add((safeSender, safeMessage, isOwn));
+        // 사용자 메시지의 제어 문자가 화면 위치와 공지 서식을 바꾸지 못하게 한다.
+        string safeSender = string.Concat(sender.Select(character => char.IsControl(character) == true ? ' ' : character));
+        string safeMessage = string.Concat(message.Select(character => char.IsControl(character) == true ? ' ' : character));
+        messages.Add((safeSender, safeMessage, isOwn, isNotice, time));
+        int previousRows = displayRows.Count;
+        RebuildRows();
         // 이전 채팅을 읽는 중이면 새 메시지가 와도 같은 위치를 유지한다.
-        if (scrollOffset > 0) scrollOffset++;
+        if (scrollOffset > 0) scrollOffset += displayRows.Count - previousRows;
         DrawMessages();
     }
 
     public void AppendOwnChat(string message)
     {
-        AppendChat($"ㅇㅇ({ownIp})", message, true);
+        AppendChat($"ㅇㅇ({ownIp})", message, true, false, DateTimeOffset.Now);
     }
 
     public void SetOwnIp(string ip)
@@ -74,22 +81,6 @@ public sealed class TerminalApp
 
     private void HandleKey(ConsoleKeyInfo key)
     {
-        int pageSize = Math.Max(1, screenHeight - 3);
-        int maxOffset = Math.Max(0, messages.Count - pageSize);
-        if (key.Key == ConsoleKey.PageUp || key.Key == ConsoleKey.UpArrow || key.Key == ConsoleKey.Home)
-        {
-            int amount = key.Key == ConsoleKey.UpArrow ? 1 : pageSize;
-            scrollOffset = key.Key == ConsoleKey.Home ? maxOffset : Math.Min(maxOffset, scrollOffset + amount);
-            DrawMessages();
-            return;
-        }
-        if (key.Key == ConsoleKey.PageDown || key.Key == ConsoleKey.DownArrow || key.Key == ConsoleKey.End)
-        {
-            int amount = key.Key == ConsoleKey.DownArrow ? 1 : pageSize;
-            scrollOffset = key.Key == ConsoleKey.End ? 0 : Math.Max(0, scrollOffset - amount);
-            DrawMessages();
-            return;
-        }
         if (key.Key == ConsoleKey.Enter)
         {
             ChatRequested?.Invoke(input.ToString());
@@ -115,7 +106,8 @@ public sealed class TerminalApp
     {
         screenWidth = Console.WindowWidth;
         screenHeight = Console.WindowHeight;
-        if (screenWidth < 4 || screenHeight < 4) return;
+        if (screenWidth < 8 || screenHeight < 4) return;
+        RebuildRows();
 
         Console.BackgroundColor = ConsoleColor.Black;
         Console.ForegroundColor = ConsoleColor.White;
@@ -136,33 +128,132 @@ public sealed class TerminalApp
 
     private void DrawMessages()
     {
-        if (screenWidth < 4 || screenHeight < 4) return;
+        if (screenWidth < 8 || screenHeight < 4) return;
         int rows = screenHeight - 3;
-        scrollOffset = Math.Min(scrollOffset, Math.Max(0, messages.Count - rows));
-        int first = Math.Max(0, messages.Count - rows - scrollOffset);
+        scrollOffset = Math.Min(scrollOffset, Math.Max(0, displayRows.Count - rows));
+        int first = Math.Max(0, displayRows.Count - rows - scrollOffset);
         for (int row = 0; row < rows; row++)
         {
             Console.SetCursorPosition(1, row + 1);
             Console.ForegroundColor = ConsoleColor.White;
             Console.Write(new string(' ', screenWidth - 2));
             int index = first + row;
-            if (index >= messages.Count) continue;
+            if (index >= displayRows.Count) continue;
             Console.SetCursorPosition(1, row + 1);
-            Console.ForegroundColor = messages[index].IsOwn ? ConsoleColor.DarkYellow : ConsoleColor.White;
+            Console.ForegroundColor = displayRows[index].IsOwn ? ConsoleColor.DarkYellow : ConsoleColor.White;
             // 발신자 길이와 한글 폭에 관계없이 구분자를 같은 열에 표시한다.
-            int separatorColumn = Math.Min(MessageColumn, screenWidth - 3);
-            Console.Write(FitToWidth(messages[index].Sender, separatorColumn - 2));
+            int separatorColumn = Math.Min(MessageColumn, Math.Max(2, screenWidth - 25));
+            if (displayRows[index].IsNotice == true) Console.Write("\u001b[3m");
+            Console.Write(FitToWidth(displayRows[index].Sender, separatorColumn - 2));
             Console.SetCursorPosition(separatorColumn, row + 1);
-            Console.Write(": ");
-            Console.Write(FitToWidth(messages[index].Message, screenWidth - separatorColumn - 3));
+            Console.Write(displayRows[index].Sender.Length > 0 ? ": " : "  ");
+            Console.Write(displayRows[index].Text);
+            if (displayRows[index].IsNotice == true) Console.Write("\u001b[23m");
         }
         Console.ForegroundColor = ConsoleColor.White;
+        DrawScrollBar();
         DrawInput();
+    }
+
+    private void RebuildRows()
+    {
+        displayRows.Clear();
+        int separatorColumn = Math.Min(MessageColumn, Math.Max(2, screenWidth - 25));
+        int available = Math.Max(1, screenWidth - separatorColumn - 4);
+        foreach (var message in messages)
+        {
+            string sender = message.Sender;
+            string remaining = message.Message;
+            string timestamp = message.Time.ToOffset(TimeSpan.FromHours(9)).ToString("(yyyy-MM-dd, HH:mm)");
+            // 본문과 시간을 잘라 버리지 않고 다음 화면 줄로 이어서 표시한다.
+            while (GetDisplayWidth(remaining) > available)
+            {
+                string part = FitToWidth(remaining, available);
+                if (part.Length == 0) part = remaining[..1];
+                displayRows.Add((sender, part, message.IsOwn, message.IsNotice));
+                sender = "";
+                remaining = remaining[part.Length..];
+            }
+            if (GetDisplayWidth(remaining) + timestamp.Length + 1 <= available)
+            {
+                displayRows.Add((sender, remaining + " " + timestamp, message.IsOwn, message.IsNotice));
+            }
+            else
+            {
+                if (remaining.Length > 0)
+                {
+                    displayRows.Add((sender, remaining, message.IsOwn, message.IsNotice));
+                    sender = "";
+                }
+                while (timestamp.Length > available)
+                {
+                    displayRows.Add((sender, timestamp[..available], message.IsOwn, message.IsNotice));
+                    sender = "";
+                    timestamp = timestamp[available..];
+                }
+                displayRows.Add((sender, timestamp, message.IsOwn, message.IsNotice));
+            }
+        }
+    }
+
+    private (int Rows, int MaxOffset, int ThumbSize, int ThumbTop) GetScrollMetrics()
+    {
+        int rows = Math.Max(1, screenHeight - 3);
+        int maxOffset = Math.Max(0, displayRows.Count - rows);
+        int size = Math.Clamp(rows * rows / Math.Max(rows, displayRows.Count), 1, rows);
+        int top = maxOffset == 0 ? 0 : (int)Math.Round((double)(maxOffset - scrollOffset) * (rows - size) / maxOffset);
+        return (rows, maxOffset, size, top);
+    }
+
+    private void DrawScrollBar()
+    {
+        var metrics = GetScrollMetrics();
+        for (int row = 0; row < metrics.Rows; row++)
+        {
+            Console.SetCursorPosition(screenWidth - 2, row + 1);
+            Console.Write(row >= metrics.ThumbTop && row < metrics.ThumbTop + metrics.ThumbSize ? '█' : '│');
+        }
+    }
+
+    private void HandleMouse(int x, int y, int wheel, bool leftDown)
+    {
+        if (screenWidth < 8 || screenHeight < 4) return;
+        var metrics = GetScrollMetrics();
+        if (wheel != 0)
+        {
+            scrollOffset = Math.Clamp(scrollOffset + wheel * 3, 0, metrics.MaxOffset);
+            DrawMessages();
+            return;
+        }
+        if (leftDown == false)
+        {
+            draggingScroll = false;
+            return;
+        }
+        int row = Math.Clamp(y - 1, 0, metrics.Rows - 1);
+        if (draggingScroll == false)
+        {
+            if (x != screenWidth - 2 || y < 1 || y > metrics.Rows) return;
+            if (row < metrics.ThumbTop || row >= metrics.ThumbTop + metrics.ThumbSize)
+            {
+                scrollOffset = Math.Clamp(scrollOffset + (row < metrics.ThumbTop ? metrics.Rows : -metrics.Rows), 0, metrics.MaxOffset);
+                DrawMessages();
+                return;
+            }
+            draggingScroll = true;
+            dragOffset = row - metrics.ThumbTop;
+        }
+        // 스크롤 손잡이의 위치를 채팅 목록 위치로 변환한다.
+        int travel = metrics.Rows - metrics.ThumbSize;
+        if (travel == 0) return;
+        int top = Math.Clamp(row - dragOffset, 0, travel);
+        scrollOffset = metrics.MaxOffset - (int)Math.Round((double)top * metrics.MaxOffset / travel);
+        DrawMessages();
     }
 
     private void DrawInput()
     {
-        if (screenWidth < 4 || screenHeight < 4) return;
+        if (screenWidth < 8 || screenHeight < 4) return;
         Console.SetCursorPosition(1, screenHeight - 2);
         Console.ForegroundColor = ConsoleColor.White;
         Console.Write(new string(' ', screenWidth - 2));
