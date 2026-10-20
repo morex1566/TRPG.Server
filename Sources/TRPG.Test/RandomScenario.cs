@@ -10,13 +10,14 @@ internal static class RandomScenario
     public static async Task<int> RunAsync(TestOptions options, CancellationToken cancellation)
     {
         var metrics = new TestMetrics { RandomWorkload = true };
+        Program.SetMetrics(metrics);
         var slots = new StressClient?[options.Clients];
         var attempts = new List<Task>();
         var watch = new Stopwatch();
         var ids = new MessageIds();
         bool cancelled = false;
         Console.WriteLine($"대상: {options.Host}:{options.Port}, 최대 동시 슬롯: {options.Clients}, 부하 시간: {options.Seconds}초");
-        Console.WriteLine("각 접속자 500~1000ms 간격, 본문 총 8~16B. 10~30초 접속 / 1~5초 재접속 대기.");
+        Console.WriteLine("각 접속자 500~1000ms 간격, 본문 총 8~16B. 200ms마다 퇴장 또는 재접속과 최대 인원의 20% 이내 대상 인원을 무작위 선택.");
         Console.WriteLine("초기 접속 중에는 채팅을 보내지 않습니다. 송신 성공은 서버의 DB 저장 성공을 뜻하지 않습니다.");
         if (options.IsLoopback == false) Console.WriteLine("실제 VM에 대량의 중계 트래픽과 DB 저장 부하가 발생합니다.");
 
@@ -36,10 +37,11 @@ internal static class RandomScenario
             metrics.BeginLoad();
             watch.Start();
 
-            // 각 슬롯이 독립적으로 채팅과 접속 수명을 결정한다.
+            // 채팅은 슬롯별로 처리하고, 퇴장과 재접속은 별도 주기로 처리한다.
             Task[] workers = Enumerable.Range(0, slots.Length)
                 .Select(index => RunSlotAsync(index, slots, options, metrics, ids, watch, cancellation)).ToArray();
-            await Task.WhenAll(workers.Append(ReportProgressAsync(slots, metrics, watch, options.Seconds, cancellation)));
+            await Task.WhenAll(workers.Append(ChangeRandomConnectionsAsync(slots, options, metrics, watch, cancellation))
+                .Append(ReportProgressAsync(slots, metrics, watch, options.Seconds, cancellation)));
             watch.Stop();
             metrics.EndLoad();
             Console.WriteLine($"송신 종료. 마지막 연결을 유지하며 {options.DrainSeconds}초 수신을 기다립니다.");
@@ -103,27 +105,20 @@ internal static class RandomScenario
     private static async Task RunSlotAsync(int index, StressClient?[] slots, TestOptions options,
         TestMetrics metrics, MessageIds ids, Stopwatch watch, CancellationToken cancellation)
     {
-        double disconnectAt = watch.Elapsed.TotalSeconds + Random.Shared.Next(10, 31);
         while (watch.Elapsed.TotalSeconds < options.Seconds)
         {
             cancellation.ThrowIfCancellationRequested();
-            StressClient client = slots[index]!;
-            if (client.IsConnected == false || watch.Elapsed.TotalSeconds >= disconnectAt)
+            StressClient? client = Volatile.Read(ref slots[index]);
+            if (client is null || client.IsConnected == false)
             {
-                await client.DisposeAsync();
-                slots[index] = null;
-                await DelayUntilEndAsync(Random.Shared.Next(1000, 5001), options, watch, cancellation);
-                if (watch.Elapsed.TotalSeconds >= options.Seconds) break;
-
-                client = new StressClient(index, "", metrics, cancellation);
-                slots[index] = client;
-                await client.ConnectAsync(options);
-                disconnectAt = watch.Elapsed.TotalSeconds + Random.Shared.Next(10, 31);
+                // 재접속은 200ms 주기 담당만 수행한다. 별도의 자동 재접속 대기는 없다.
+                await DelayUntilEndAsync(200, options, watch, cancellation);
                 continue;
             }
 
             await DelayUntilEndAsync(Random.Shared.Next(500, 1001), options, watch, cancellation);
             if (watch.Elapsed.TotalSeconds >= options.Seconds) break;
+            if (ReferenceEquals(Volatile.Read(ref slots[index]), client) == false) continue;
             int sequence = Interlocked.Increment(ref ids.Next);
             if (sequence > TestOptions.MaxMessages) throw new InvalidOperationException("메시지 추적 한도를 초과했습니다.");
 
@@ -144,9 +139,52 @@ internal static class RandomScenario
             catch (Exception error) when (error is IOException or System.Net.Sockets.SocketException or OperationCanceledException or ObjectDisposedException)
             {
                 cancellation.ThrowIfCancellationRequested();
-                Interlocked.Increment(ref metrics.SendErrors);
+                // 의도한 퇴장과 겹친 송신 취소는 서버 송신 오류로 집계하지 않는다.
+                if (ReferenceEquals(Volatile.Read(ref slots[index]), client) == true)
+                    Interlocked.Increment(ref metrics.SendErrors);
             }
         }
+    }
+
+    private static async Task ChangeRandomConnectionsAsync(StressClient?[] slots, TestOptions options,
+        TestMetrics metrics, Stopwatch watch, CancellationToken cancellation)
+    {
+        // 최대 인원 기준 20%를 넘지 않는다. 1~4명 테스트에서는 최소 한 명을 선택한다.
+        int maximum = Math.Max(1, options.Clients / 5);
+        Task[] pending = Enumerable.Repeat(Task.CompletedTask, slots.Length).ToArray();
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(200));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellation) == true)
+            {
+                if (watch.Elapsed.TotalSeconds >= options.Seconds) break;
+                bool disconnect = Random.Shared.Next(2) == 0;
+                int[] candidates = Enumerable.Range(0, slots.Length)
+                    .Where(index => pending[index].IsCompleted == true &&
+                        (Volatile.Read(ref slots[index])?.IsConnected == true) == disconnect).ToArray();
+                Random.Shared.Shuffle(candidates);
+                int count = Math.Min(Random.Shared.Next(1, maximum + 1), candidates.Length);
+                for (int i = 0; i < count; i++)
+                {
+                    int index = candidates[i];
+                    await pending[index];
+                    // 연결 응답이 느려도 다음 200ms 주기를 막거나 같은 슬롯을 중복 처리하지 않는다.
+                    pending[index] = ChangeConnectionAsync(index, disconnect, slots, options, metrics, cancellation);
+                }
+            }
+        }
+        finally { await Task.WhenAll(pending); }
+    }
+
+    private static async Task ChangeConnectionAsync(int index, bool disconnect, StressClient?[] slots,
+        TestOptions options, TestMetrics metrics, CancellationToken cancellation)
+    {
+        StressClient? previous = Interlocked.Exchange(ref slots[index], null);
+        if (previous is not null) await previous.DisposeAsync();
+        if (disconnect == true || cancellation.IsCancellationRequested == true) return;
+        var client = new StressClient(index, "", metrics, cancellation);
+        Volatile.Write(ref slots[index], client);
+        await client.ConnectAsync(options);
     }
 
     private static async Task DelayUntilEndAsync(int milliseconds, TestOptions options, Stopwatch watch, CancellationToken cancellation)

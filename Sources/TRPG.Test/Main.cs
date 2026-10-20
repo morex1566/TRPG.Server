@@ -7,6 +7,10 @@ namespace TRPG.Test;
 
 internal static class Program
 {
+    private static TestMetrics? currentMetrics;
+    internal static TestMetrics? CurrentMetrics => Volatile.Read(ref currentMetrics);
+    internal static void SetMetrics(TestMetrics? metrics) => Volatile.Write(ref currentMetrics, metrics);
+
     public static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
@@ -19,7 +23,6 @@ internal static class Program
         TestOptions options;
         try
         {
-            args = SelectClients(args);
             options = TestOptions.Parse(args);
         }
         catch (Exception error) when (error is ArgumentException or FormatException or OverflowException)
@@ -38,19 +41,11 @@ internal static class Program
         Console.CancelKeyPress += cancelHandler;
         try
         {
-            await using var monitor = new ServerMonitor(options);
-            if (await monitor.WaitForReadyAsync(cancellation.Token) == false)
-            {
-                await monitor.StopAsync();
-                monitor.PrintResult();
-                return 1;
-            }
-            int result = await RunAsync(options, cancellation.Token);
-            await monitor.StopAsync();
-            monitor.PrintResult();
-            bool passed = result == 0 && monitor.HasFreshData == true && monitor.HasDatabaseFailures == false;
-            Console.WriteLine(passed ? "종합: 관측 오류 없이 측정 완료 (성능 목표 달성 보장은 아님)" : "종합: 오류 또는 불완전한 측정이 있습니다.");
-            return passed == true ? 0 : 1;
+            return await DashboardHost.RunAsync(options, cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested == true)
+        {
+            return 0;
         }
         finally
         {
@@ -58,26 +53,13 @@ internal static class Program
         }
     }
 
-    private static string[] SelectClients(string[] args)
-    {
-        if (args.Contains("--clients") == true) return args;
-        while (true)
-        {
-            Console.Write("접속 인원 선택 (1~999): ");
-            string? input = Console.ReadLine();
-            if (input is null) throw new ArgumentException("입력이 없으면 --clients 1~999를 지정하세요.");
-            if (int.TryParse(input, out int clients) == true && clients is >= 1 and <= 999)
-                return [.. args, "--clients", clients.ToString(System.Globalization.CultureInfo.InvariantCulture)];
-            Console.WriteLine("1~999 사이의 정수를 입력하세요.");
-        }
-    }
-
-    private static async Task<int> RunAsync(TestOptions options, CancellationToken cancellation)
+    internal static async Task<int> RunAsync(TestOptions options, CancellationToken cancellation)
     {
         if (options.RandomWorkload == true) return await RandomScenario.RunAsync(options, cancellation);
 
         string prefix = $"~trpg:{Guid.NewGuid():N}:";
         var metrics = new TestMetrics();
+        SetMetrics(metrics);
         var clients = new List<StressClient>();
         var connects = new List<Task>();
         var sendWatch = new Stopwatch();

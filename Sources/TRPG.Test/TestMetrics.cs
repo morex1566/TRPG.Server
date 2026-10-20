@@ -9,6 +9,7 @@ internal sealed class TestMetrics
     private readonly long[] latencyBuckets = new long[10002];
     private readonly long[] connectBuckets = new long[10002];
     private readonly ConcurrentQueue<string> errorSamples = new();
+    private readonly ConcurrentQueue<int> probeMessages = new();
     private int errorSampleCount;
     public int Recipients;
     private long latencyMicroseconds;
@@ -16,6 +17,9 @@ internal sealed class TestMetrics
     private long connectMicroseconds;
     private long connectSamples;
     private long receivedDeliveries;
+    private long successfulSends;
+    private long loadSentMessages;
+    private long uniqueReceipts;
     private long loadStarted;
     private long loadStopped;
     private long loadDeliveries;
@@ -72,6 +76,7 @@ internal sealed class TestMetrics
     public void RegisterProbe(int id, int sender, int clients, int recipients)
     {
         messages[id] = new Delivery(sender, clients) { Probe = true, ExpectedCount = recipients };
+        probeMessages.Enqueue(id);
     }
 
     public void RecordClientError(int index, string message)
@@ -89,6 +94,8 @@ internal sealed class TestMetrics
     public void ConfirmSent(int id, int bytes)
     {
         messages[id].Confirmed = true;
+        Interlocked.Increment(ref successfulSends);
+        if (messages[id].Probe == false) Interlocked.Increment(ref loadSentMessages);
         Interlocked.Add(ref SentBytes, bytes);
     }
 
@@ -114,6 +121,7 @@ internal sealed class TestMetrics
             }
             delivery.Seen[word] |= bit;
             delivery.Received++;
+            Interlocked.Increment(ref uniqueReceipts);
         }
 
         RecordLatency(delivery.Started);
@@ -140,6 +148,74 @@ internal sealed class TestMetrics
         Interlocked.Increment(ref latencyCount);
         int bucket = (int)Math.Min(10001, Math.Ceiling(milliseconds));
         Interlocked.Increment(ref latencyBuckets[bucket]);
+    }
+
+    public object CaptureLive()
+    {
+        long started = Interlocked.Read(ref loadStarted);
+        long stopped = Interlocked.Read(ref loadStopped);
+        double elapsed = started == 0 ? 0 : Stopwatch.GetElapsedTime(started,
+            stopped == 0 ? Stopwatch.GetTimestamp() : stopped).TotalSeconds;
+        long samples = Interlocked.Read(ref latencyCount);
+        long connections = Interlocked.Read(ref connectSamples);
+        long sent = Interlocked.Read(ref successfulSends);
+        long expected = 0;
+        long checkedReceived = 0;
+        if (RandomWorkload == true)
+        {
+            // 검증용 메시지 세 개만 조회해 화면 갱신 때 전체 추적 목록을 복사하지 않는다.
+            foreach (int id in probeMessages)
+            {
+                Delivery message = messages[id];
+                if (message.Confirmed == false) continue;
+                expected += message.ExpectedCount;
+                checkedReceived += Volatile.Read(ref message.Received);
+            }
+        }
+        else
+        {
+            expected = sent * Recipients;
+            checkedReceived = Interlocked.Read(ref uniqueReceipts);
+        }
+        long missing = Math.Max(0, expected - checkedReceived);
+        return new
+        {
+            phase = started == 0 ? "접속 준비" : stopped == 0 ? "부하 진행" : "수신 대기 / 검증",
+            elapsedSeconds = elapsed,
+            activeConnections = Volatile.Read(ref activeConnections),
+            peakConnections = Volatile.Read(ref peakConnections),
+            connectionAttempts = Volatile.Read(ref ConnectionAttempts),
+            connected = Volatile.Read(ref Connected),
+            connectFailures = Volatile.Read(ref ConnectFailures),
+            plannedDisconnects = Volatile.Read(ref PlannedDisconnects),
+            disconnected = Volatile.Read(ref Disconnected),
+            sendErrors = Volatile.Read(ref SendErrors),
+            sentMessages = sent,
+            receivedDeliveries = Interlocked.Read(ref receivedDeliveries),
+            sentBytes = Interlocked.Read(ref SentBytes),
+            receivedBytes = Interlocked.Read(ref ReceivedBytes),
+            sendRate = Interlocked.Read(ref loadSentMessages) / Math.Max(0.001, elapsed),
+            receiveRate = (stopped == 0 ? Interlocked.Read(ref receivedDeliveries) : Interlocked.Read(ref loadDeliveries)) / Math.Max(0.001, elapsed),
+            connectSuccessPercent = ConnectionAttempts == 0 ? (double?)null : 100.0 * Connected / ConnectionAttempts,
+            connectFailurePercent = ConnectionAttempts == 0 ? (double?)null : 100.0 * ConnectFailures / ConnectionAttempts,
+            disconnectPercent = Connected == 0 ? (double?)null : 100.0 * Disconnected / Connected,
+            sendErrorPercent = sent + SendErrors == 0 ? (double?)null : 100.0 * SendErrors / (sent + SendErrors),
+            connectAverageMs = connections == 0 ? (double?)null : Interlocked.Read(ref connectMicroseconds) / 1000.0 / connections,
+            connectP50Ms = PercentileValue(connectBuckets, connections, 0.5),
+            connectP95Ms = PercentileValue(connectBuckets, connections, 0.95),
+            connectP99Ms = PercentileValue(connectBuckets, connections, 0.99),
+            latencyAverageMs = samples == 0 ? (double?)null : Interlocked.Read(ref latencyMicroseconds) / 1000.0 / samples,
+            latencyP50Ms = PercentileValue(latencyBuckets, samples, 0.5),
+            latencyP95Ms = PercentileValue(latencyBuckets, samples, 0.95),
+            latencyP99Ms = PercentileValue(latencyBuckets, samples, 0.99),
+            validationExpected = expected,
+            validationReceived = checkedReceived,
+            validationMissing = missing,
+            duplicates = Interlocked.Read(ref Duplicates),
+            lossPercent = expected == 0 ? (double?)null : 100.0 * missing / expected,
+            duplicatePercent = expected == 0 ? (double?)null : 100.0 * Duplicates / expected,
+            randomWorkload = RandomWorkload
+        };
     }
 
     public bool PrintResult(double elapsedSeconds, bool cancelled)
@@ -199,15 +275,21 @@ internal sealed class TestMetrics
 
     private static string Percentile(long[] buckets, long samples, double percentile)
     {
-        if (samples == 0) return "측정 없음";
+        double? value = PercentileValue(buckets, samples, percentile);
+        return value is null ? "측정 없음" : value == 10001 ? ">10000ms" : $"≤{value}ms";
+    }
+
+    private static double? PercentileValue(long[] buckets, long samples, double percentile)
+    {
+        if (samples == 0) return null;
         long target = (long)Math.Ceiling(samples * percentile);
         long count = 0;
         for (int i = 0; i < buckets.Length; i++)
         {
             count += Interlocked.Read(ref buckets[i]);
-            if (count >= target) return i == 10001 ? ">10000ms" : $"≤{i}ms";
+            if (count >= target) return i;
         }
-        return "측정 없음";
+        return null;
     }
 
     private sealed class Delivery

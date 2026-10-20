@@ -16,6 +16,10 @@ public sealed class ServerPerformance : IAsyncDisposable
     private static long databaseMaxTicks;
     private readonly CancellationTokenSource cancellation = new();
     private readonly Task sampler;
+    private int running;
+    private ServerPerformanceSnapshot? lastSnapshot;
+
+    public void SetRunning(bool value) => Volatile.Write(ref running, value == true ? 1 : 0);
 
     public ServerPerformance(TcpServer server, string sessionId)
     {
@@ -25,7 +29,7 @@ public sealed class ServerPerformance : IAsyncDisposable
 
     public static DatabaseWriteMeasurement MeasureDatabaseWrite() => new();
 
-    private static async Task SampleAsync(TcpServer server, string sessionId, CancellationToken cancellation)
+    private async Task SampleAsync(TcpServer server, string sessionId, CancellationToken cancellation)
     {
         string path = Path.Combine(AppContext.BaseDirectory, "server-metrics.json");
         using Process process = Process.GetCurrentProcess();
@@ -38,7 +42,7 @@ public sealed class ServerPerformance : IAsyncDisposable
 
         while (cancellation.IsCancellationRequested == false)
         {
-            await Task.Delay(1000, cancellation);
+            await Task.Delay(500, cancellation);
             process.Refresh();
             double sampledAt = watch.Elapsed.TotalSeconds;
             double elapsed = Math.Max(0.001, sampledAt - previousTime);
@@ -53,8 +57,18 @@ public sealed class ServerPerformance : IAsyncDisposable
 
             var snapshot = new ServerPerformanceSnapshot
             {
+                Version = 2,
                 SessionId = sessionId,
                 CollectedAt = DateTimeOffset.UtcNow,
+                ServerRunning = Volatile.Read(ref running) == 1,
+                DatabaseEnabled = ChatDatabase.Enabled,
+                ProcessId = Environment.ProcessId,
+                LogicalProcessors = Environment.ProcessorCount,
+                OperatingSystem = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+                Architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString(),
+                UptimeSeconds = watch.Elapsed.TotalSeconds,
+                Threads = process.Threads.Count,
+                ManagedMemoryBytes = GC.GetTotalMemory(false),
                 Connections = server.ConnectionCount,
                 ReceiveQueue = server.RecvQueue.Count,
                 ProcessCpuPercent = Math.Clamp((cpu - previousCpu).TotalSeconds / elapsed / Environment.ProcessorCount * 100, 0, 100),
@@ -74,16 +88,20 @@ public sealed class ServerPerformance : IAsyncDisposable
                 DatabaseTotalMilliseconds = database.Ticks * 1000.0 / Stopwatch.Frequency,
                 DatabaseMaxMilliseconds = database.MaxTicks * 1000.0 / Stopwatch.Frequency
             };
+            lastSnapshot = snapshot;
 
             try
             {
                 // 임시 파일에서 교체해 읽는 쪽에 불완전한 JSON을 전달하지 않는다.
                 await File.WriteAllTextAsync(path + ".tmp", JsonSerializer.Serialize(snapshot), cancellation);
-                File.Move(path + ".tmp", path, true);
+                ReplaceSnapshotFile(path);
+                if (reportedFileError == true) Console.WriteLine("서버 지표 파일 저장이 복구되었습니다.");
+                reportedFileError = false;
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException)
             {
-                if (reportedFileError == false) Console.WriteLine($"서버 지표 파일 저장 실패: {error.GetType().Name}");
+                if (reportedFileError == false)
+                    Console.WriteLine($"서버 지표 파일 저장 실패: {path} | {error.GetType().Name} (0x{error.HResult:X8}): {error.Message}");
                 reportedFileError = true;
             }
             previousCpu = cpu;
@@ -91,6 +109,13 @@ public sealed class ServerPerformance : IAsyncDisposable
             previousHostCpu = hostCpu;
             previousNetwork = network;
         }
+    }
+
+    private static void ReplaceSnapshotFile(string path)
+    {
+        // 기존 파일은 원자적으로 교체한다. Windows에서 열린 파일의 덮어쓰기 이동을 피한다.
+        if (File.Exists(path) == true) File.Replace(path + ".tmp", path, null);
+        else File.Move(path + ".tmp", path);
     }
 
     private static (long Attempts, long Completed, long Failures, long Ticks, long MaxTicks) ReadDatabaseStatistics()
@@ -101,6 +126,7 @@ public sealed class ServerPerformance : IAsyncDisposable
 
     private static (long Total, long Idle)? ReadHostCpu()
     {
+        if (OperatingSystem.IsWindows() == true) return WindowsHostResources.ReadCpu();
         if (OperatingSystem.IsLinux() == false) return null;
         try
         {
@@ -112,6 +138,7 @@ public sealed class ServerPerformance : IAsyncDisposable
 
     private static (long Used, long Total)? ReadHostMemory()
     {
+        if (OperatingSystem.IsWindows() == true) return WindowsHostResources.ReadMemory();
         if (OperatingSystem.IsLinux() == false) return null;
         try
         {
@@ -140,6 +167,24 @@ public sealed class ServerPerformance : IAsyncDisposable
         cancellation.Cancel();
         try { await sampler; }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested == true) { }
+        if (lastSnapshot is not null)
+        {
+            try
+            {
+                // 정상 종료를 명시적으로 남긴다. 강제 종료는 갱신 중단으로만 감지할 수 있다.
+                string path = Path.Combine(AppContext.BaseDirectory, "server-metrics.json");
+                await File.WriteAllTextAsync(path + ".tmp", JsonSerializer.Serialize(lastSnapshot with
+                {
+                    ServerRunning = false,
+                    CollectedAt = DateTimeOffset.UtcNow
+                }));
+                ReplaceSnapshotFile(path);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+            {
+                Console.WriteLine($"서버 종료 상태 파일을 기록하지 못했습니다: {error.Message}");
+            }
+        }
         cancellation.Dispose();
     }
 

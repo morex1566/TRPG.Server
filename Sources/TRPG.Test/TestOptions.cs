@@ -45,14 +45,17 @@ internal sealed record TestOptions(string Host, int Port, int Clients, int Secon
             ServerMetricsFile = Get("--server-metrics-file", options.ServerMetricsFile)
         };
 
-        if (options.Port is < 1 or > 65535 || options.Clients is < 1 or > 999 ||
-            options.Seconds is < 1 or > 3600 || double.IsFinite(options.Rate) == false ||
-            options.Rate is < 0 or > 10000 || options.Characters is < 1 or > 600 ||
-            options.RampMs is < 0 or > 10000 || options.DrainSeconds is < 1 or > 60 ||
-            Math.Ceiling((randomWorkload ? options.Clients * 2.0 : options.Rate) * options.Seconds) > MaxMessages)
-            throw new ArgumentException("옵션 범위를 벗어났습니다. --help를 확인하세요.");
-
+        options.Validate();
         return options;
+    }
+
+    public void Validate()
+    {
+        if (Port is < 1 or > 65535 || Clients is < 1 or > 999 || Seconds is < 1 or > 3600 ||
+            double.IsFinite(Rate) == false || Rate is < 0 or > 10000 || Characters is < 1 or > 600 ||
+            RampMs is < 0 or > 10000 || DrainSeconds is < 1 or > 60 ||
+            Math.Ceiling((RandomWorkload == true ? Clients * 2.0 : Rate) * Seconds) > MaxMessages)
+            throw new ArgumentException("옵션 범위를 벗어났습니다. 인원 1~999, 시간 1~3600초, 추적 한도 100,000건을 확인하세요.");
     }
 
     public bool IsLoopback => Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) == true ||
@@ -67,7 +70,7 @@ internal sealed record TestOptions(string Host, int Port, int Clients, int Secon
             --host            서버 주소                      기본 {DefaultHost}
             --port            포트                           기본 60000
             --mode            random / fixed                 기본 random
-            --clients         동시 클라이언트 슬롯 (1~999)    미지정 시 실행 화면에서 입력
+            --clients         HTML의 초기 인원 (1~999)       브라우저에서 변경 가능
             --seconds         부하 유지 시간 (1~3600초)       기본 30
             --rate            fixed 전용 방 전체 메시지/초    기본 1, 0이면 접속 유지
             --chars           fixed 전용 한글 수 (1~600)      기본 20 + 식별자
@@ -75,6 +78,9 @@ internal sealed record TestOptions(string Host, int Port, int Clients, int Secon
             --drain-seconds   종료 전 수신 대기 (1~60초)      기본 5
             --ssh-key         VM 지표 수집에 사용할 SSH 개인 키 경로
             --server-metrics-file 로컬 서버의 지표 JSON 경로 (기본 Debug 서버 출력 폴더)
+
+            실행 시 로컬 HTML 대시보드를 엽니다. 부하는 브라우저의 시작 버튼을 눌러야 시작됩니다.
+            서버 상태와 그래프는 0.5초 목표 간격으로 갱신하며 부하 종료 뒤에도 감시를 유지합니다.
 
             핸드셰이크/송신 제한 시간은 5초입니다.
             random: 각 접속자가 500~1000ms마다 8~16B ASCII 본문을 보냅니다(식별자 포함).

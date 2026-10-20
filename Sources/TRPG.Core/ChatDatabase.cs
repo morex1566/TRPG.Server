@@ -5,8 +5,26 @@ namespace TRPG.Core;
 
 public static class ChatDatabase
 {
+    // Debug 서버는 환경 변수나 원격 DB를 사용하지 않는다.
+    public static bool Enabled
+    {
+        get
+        {
+#if DEBUG
+            return false;
+#else
+            return true;
+#endif
+        }
+    }
+
     public static async Task CheckConnectionAsync(CancellationToken cancellation)
     {
+        if (Enabled == false)
+        {
+            Console.WriteLine("Debug 서버: DB 연결 및 저장을 사용하지 않습니다.");
+            return;
+        }
         using OracleConnection connection = CreateConnection();
         await connection.OpenAsync(cancellation);
 
@@ -51,6 +69,7 @@ public static class ChatDatabase
 
     public static async Task SaveMessageAsync(string sessionId, ulong senderId, string senderIp, string message, long timestamp, CancellationToken cancellation)
     {
+        if (Enabled == false) return;
         using var measurement = ServerPerformance.MeasureDatabaseWrite();
         using OracleConnection connection = CreateConnection();
         await connection.OpenAsync(cancellation);
@@ -78,5 +97,18 @@ public static class ChatDatabase
 
         await command.ExecuteNonQueryAsync(cancellation);
         measurement.Succeed();
+    }
+
+    public static async Task ResetMessagesAsync(CancellationToken cancellation)
+    {
+        if (Enabled == false) return;
+        using OracleConnection connection = CreateConnection();
+        await connection.OpenAsync(cancellation);
+        using OracleCommand command = connection.CreateCommand();
+        // 계정이나 테이블은 유지하고 채팅 기록만 전체 초기화한다.
+        command.CommandText = "DELETE FROM CHAT_MESSAGES";
+        command.CommandTimeout = 15;
+        int deleted = await command.ExecuteNonQueryAsync(cancellation);
+        Console.WriteLine($"서버 종료: DB 채팅 기록 {deleted}건 초기화 완료");
     }
 }

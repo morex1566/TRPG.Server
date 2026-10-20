@@ -17,6 +17,7 @@ public static class ChatServer
         string sessionId = Guid.NewGuid().ToString("N");
         TcpServer tcpServer = new TcpServer(Port);
         await using var performance = new ServerPerformance(tcpServer, sessionId);
+        bool started = false;
         try
         {
             NetResult startAcceptResult = await tcpServer.StartAcceptAsync();
@@ -34,6 +35,8 @@ public static class ChatServer
             }
 
             Console.WriteLine($"server listening. port={Port}");
+            started = true;
+            performance.SetRunning(true);
 
             long nextIdleCheck = Environment.TickCount64;
 
@@ -108,6 +111,21 @@ public static class ChatServer
         finally
         {
             tcpServer.Close();
+            performance.SetRunning(false);
+            if (started == true && ChatDatabase.Enabled == true)
+            {
+                // 종료 신호의 취소 토큰과 분리해 제한 시간 내 DB 초기화를 시도한다.
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                try { await ChatDatabase.ResetMessagesAsync(cleanup.Token); }
+                catch (OperationCanceledException)
+                {
+                    Console.WriteLine("서버 종료: DB 초기화 제한 시간을 초과했습니다. 기록이 남아 있을 수 있습니다.");
+                }
+                catch (Oracle.ManagedDataAccess.Client.OracleException error)
+                {
+                    Console.WriteLine($"서버 종료: DB 초기화 실패 ORA-{error.Number:D5}. 기록이 남아 있을 수 있습니다.");
+                }
+            }
         }
     }
 }

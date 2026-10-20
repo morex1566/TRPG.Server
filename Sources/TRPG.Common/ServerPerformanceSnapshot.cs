@@ -3,8 +3,18 @@ namespace TRPG.Common;
 // 서버가 기록하고 테스트 도구가 읽는 측정 값입니다. 비밀번호와 채팅 내용은 포함하지 않습니다.
 public sealed record ServerPerformanceSnapshot
 {
+    public int Version { get; init; }
     public string SessionId { get; init; } = "";
     public DateTimeOffset CollectedAt { get; init; }
+    public bool ServerRunning { get; init; }
+    public bool DatabaseEnabled { get; init; }
+    public int ProcessId { get; init; }
+    public int LogicalProcessors { get; init; }
+    public string OperatingSystem { get; init; } = "";
+    public string Architecture { get; init; } = "";
+    public double UptimeSeconds { get; init; }
+    public int Threads { get; init; }
+    public long ManagedMemoryBytes { get; init; }
     public int Connections { get; init; }
     public int ReceiveQueue { get; init; }
     public double ProcessCpuPercent { get; init; }
